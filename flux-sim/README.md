@@ -70,6 +70,13 @@ of each; these are the spots worth a second look:
   points. The engine enforces the natural consequence: **a cell behind on points
   will not pocket its 3rd ball** (doing so would hand the opponent the win), so it
   stalls at two and hunts points.
+- **Pocketing is a contested shot.** The basket hangs off the pole on an arm. A
+  carrier moves to a standoff spot and shoots toward the basket; opponents
+  crowding the basket lower the success odds, and a **missed/blocked shot is
+  knocked back to center** (matching "knocked-back balls chucked to center").
+  Defenders position at the threatened basket to block.
+- **Players collide.** A separation pass keeps players from passing through each
+  other, so crowding a basket or a ball carrier physically matters.
 
 ## Findings (default tuning)
 
@@ -97,7 +104,10 @@ Everything is in `js/config.js`. Good knobs to turn:
 
 - `spar.baseVitalShare` — how often a tag is a spar-ending vital (main balance lever).
 - `spar.jointPoints` — value of a joint ribbon pull.
-- `match.driveStepsToPocket` — how hard it is to pocket (ball race speed).
+- `match.baseShotChance` / `match.blockPenalty` — how easy pocketing is, and how
+  much each blocking defender hurts the shot.
 - `match.pocketsToCloseOut` — length of the ball race.
+- `circle.basketArm` — how far the basket hangs off the pole.
+- `move.playerRadius` — player collision size.
 
 Re-run the analysis after any change to see the new equilibrium and rules signals.

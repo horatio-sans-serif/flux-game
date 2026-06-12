@@ -12,6 +12,7 @@
       minDist: 26,
       standHeight: 7,
       pocketRadius: 3,
+      basketArm: 3.0, // basket hangs this far off the pole (so the pole is clear)
     },
 
     // --- Match rules ---
@@ -23,11 +24,20 @@
       decisionInterval: 8, // steps between strategy re-selection
       pickupRadius: 2.2,
       sparRange: 3.0, // how close to start a spar
-      driveStepsToPocket: 14, // uncontested steps near a stand to pocket
+      // --- Shooting: carrier stands off and shoots toward the offset basket ---
+      shootStandoff: 6.0, // distance from pole to the shooting spot (along the arm)
+      shootRange: 7.5, // carrier must be within this of the basket to charge a shot
+      shotChargeSteps: 10, // steps to ready a shot
+      baseShotChance: 0.72, // base success per shot attempt (scaled by carry stat)
+      blockRadius: 3.4, // an opponent within this of the basket blocks
+      blockPenalty: 0.26, // success lost per blocker
     },
 
     // --- Movement ---
-    move: { baseSpeed: 11 }, // units/sec, multiplied by player's speed stat
+    move: {
+      baseSpeed: 11, // units/sec, multiplied by player's speed stat
+      playerRadius: 1.4, // players can't overlap closer than 2x this
+    },
 
     // --- Sparring / velcro-ribbon model ---
     // A spar is a short series of exchanges. Each exchange, a player may "tag"

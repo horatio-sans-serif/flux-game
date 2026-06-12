@@ -131,8 +131,11 @@
       sz = (H - 2 * pad) / fd;
     const tx = (x) => W / 2 + x * sx;
     const tz = (z) => H / 2 + z * sz;
+    const dark =
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#46b14e";
+    ctx.fillStyle = dark ? "#1d5538" : "#46b14e";
     ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = "#ffffffaa";
     ctx.lineWidth = 1.5;
@@ -149,8 +152,19 @@
       ctx.strokeStyle = "#f4e04d";
       ctx.lineWidth = 2;
       ctx.stroke();
+      // pole (gray) and offset basket (orange) with a connecting arm
       ctx.beginPath();
-      ctx.arc(tx(c.x), tz(c.z), 2.5, 0, Math.PI * 2);
+      ctx.moveTo(tx(c.x), tz(c.z));
+      ctx.lineTo(tx(c.bx), tz(c.bz));
+      ctx.strokeStyle = "#cfd6df";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(tx(c.x), tz(c.z), 2, 0, Math.PI * 2);
+      ctx.fillStyle = "#cfd6df";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(tx(c.bx), tz(c.bz), 3, 0, Math.PI * 2);
       ctx.fillStyle = "#ff7a1a";
       ctx.fill();
     });

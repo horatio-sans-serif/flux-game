@@ -17,6 +17,44 @@
     return BABYLON.Color3.FromHexString(c);
   }
 
+  // Light / dark palettes, chosen from the browser's color-scheme preference.
+  const THEMES = {
+    light: {
+      sky: "#bfe3ff",
+      turf: "#46b14e",
+      hemiGround: "#9ec7a0",
+      line: "#ffffff",
+      lineEmit: "#cccccc",
+      circle: "#f4e04d",
+      circleEmit: "#7a6f10",
+      pole: "#cfcfcf",
+      poleEmit: "#444444",
+      arm: "#bcc2c9",
+      armEmit: "#3a3f45",
+      rim: "#ff7a1a",
+      rimEmit: "#7a3300",
+      net: "#ffffff",
+      netEmit: "#dddddd",
+    },
+    dark: {
+      sky: "#0d1420",
+      turf: "#1d5538",
+      hemiGround: "#13241a",
+      line: "#d7e8df",
+      lineEmit: "#39473e",
+      circle: "#d6c03c",
+      circleEmit: "#5f540e",
+      pole: "#79818b",
+      poleEmit: "#1f242a",
+      arm: "#6a727c",
+      armEmit: "#1f242a",
+      rim: "#ff8a2a",
+      rimEmit: "#5a2600",
+      net: "#cfe6d8",
+      netEmit: "#46544c",
+    },
+  };
+
   function FluxScene(canvas) {
     this.canvas = canvas;
     this.engine = new BABYLON.Engine(canvas, true, {
@@ -24,7 +62,8 @@
       stencil: true,
     });
     this.scene = new BABYLON.Scene(this.engine);
-    this.scene.clearColor = hex("#bfe3ff").toColor4(1); // pastel sky
+    this.theme = THEMES[this._prefersDark() ? "dark" : "light"];
+    this.scene.clearColor = hex(this.theme.sky).toColor4(1);
     this.players = {}; // id -> {body, label}
     this.balls = {};
     this.simEngine = null;
@@ -35,9 +74,37 @@
     this._buildStatics();
     this._buildCamera();
     this._buildLights();
+    this._watchColorScheme();
     this.engine.runRenderLoop(() => this._frame());
     window.addEventListener("resize", () => this.engine.resize());
   }
+
+  FluxScene.prototype._prefersDark = function () {
+    return !!(
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    );
+  };
+
+  // Re-theme live when the OS/browser preference flips.
+  FluxScene.prototype._watchColorScheme = function () {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      this.theme = THEMES[this._prefersDark() ? "dark" : "light"];
+      this.scene.clearColor = hex(this.theme.sky).toColor4(1);
+      if (this.turfMat) this.turfMat.diffuseColor = hex(this.theme.turf);
+      if (this.hemi) this.hemi.groundColor = hex(this.theme.hemiGround);
+      if (this.lineMats)
+        this.lineMats.forEach((m) => {
+          m.diffuseColor = hex(this.theme.line);
+          m.emissiveColor = hex(this.theme.lineEmit);
+        });
+      if (this.simEngine) this.build(this.simEngine); // re-color circles/baskets
+    };
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  };
 
   FluxScene.prototype._buildCamera = function () {
     const cam = new BABYLON.ArcRotateCamera(
@@ -63,7 +130,8 @@
       this.scene,
     );
     hemi.intensity = 0.85;
-    hemi.groundColor = hex("#9ec7a0");
+    hemi.groundColor = hex(this.theme.hemiGround);
+    this.hemi = hemi;
     const dir = new BABYLON.DirectionalLight(
       "dir",
       new BABYLON.Vector3(-0.5, -1, 0.4),
@@ -94,9 +162,11 @@
       { width: W + 24, height: D + 24 },
       this.scene,
     );
-    ground.material = this._mat("turf", "#46b14e");
+    this.turfMat = this._mat("turf", this.theme.turf);
+    ground.material = this.turfMat;
     ground.receiveShadows = true;
-    // Boundary + center lines (thin white boxes)
+    // Boundary + center lines (thin boxes); track their materials for re-theming.
+    this.lineMats = [];
     const line = (w, d, x, z) => {
       const b = BABYLON.MeshBuilder.CreateBox(
         "line",
@@ -104,7 +174,9 @@
         this.scene,
       );
       b.position.set(x, 0.06, z);
-      b.material = this._mat("white", "#ffffff", "#cccccc");
+      const m = this._mat("white", this.theme.line, this.theme.lineEmit);
+      this.lineMats.push(m);
+      b.material = m;
       return b;
     };
     const t = 0.5;
@@ -119,7 +191,9 @@
       this.scene,
     );
     ring.position.y = 0.06;
-    ring.material = this._mat("white2", "#ffffff", "#cccccc");
+    const rm = this._mat("white2", this.theme.line, this.theme.lineEmit);
+    this.lineMats.push(rm);
+    ring.material = rm;
   };
 
   // Build the dynamic meshes (circles, stands, players, balls) for one match.
@@ -137,7 +211,11 @@
         this.scene,
       );
       ring.position.set(c.x, 0.06, c.z);
-      ring.material = this._mat("circlemat", "#f4e04d", "#7a6f10");
+      ring.material = this._mat(
+        "circlemat",
+        this.theme.circle,
+        this.theme.circleEmit,
+      );
       this._dyn.push(ring);
       const pole = BABYLON.MeshBuilder.CreateCylinder(
         "pole",
@@ -145,18 +223,39 @@
         this.scene,
       );
       pole.position.set(c.x, C.circle.standHeight / 2, c.z);
-      pole.material = this._mat("polemat", "#cfcfcf", "#444");
+      pole.material = this._mat(
+        "polemat",
+        this.theme.pole,
+        this.theme.poleEmit,
+      );
       this.shadow.addShadowCaster(pole);
       this._dyn.push(pole);
-      // Basket: an orange rim with a hanging wireframe net, like a hoop.
+
+      // Basket geometry. The hoop hangs off the pole on a horizontal arm toward
+      // field center, so the pole never passes through the net (bx,bz from the
+      // engine). Players shoot from the open side toward it.
+      const bx = c.bx,
+        bz = c.bz,
+        top = C.circle.standHeight;
+      const armLen = Math.hypot(bx - c.x, bz - c.z) || 0.001;
+      const arm = BABYLON.MeshBuilder.CreateBox(
+        "arm",
+        { width: armLen, height: 0.35, depth: 0.35 },
+        this.scene,
+      );
+      arm.position.set((c.x + bx) / 2, top, (c.z + bz) / 2);
+      arm.rotation.y = -Math.atan2(bz - c.z, bx - c.x);
+      arm.material = this._mat("armmat", this.theme.arm, this.theme.armEmit);
+      this._dyn.push(arm);
+
       const rimD = C.circle.pocketRadius * 2.0;
       const rim = BABYLON.MeshBuilder.CreateTorus(
         "rim",
         { diameter: rimD, thickness: 0.5, tessellation: 28 },
         this.scene,
       );
-      rim.position.set(c.x, C.circle.standHeight, c.z);
-      rim.material = this._mat("rimmat", "#ff7a1a", "#7a3300");
+      rim.position.set(bx, top, bz);
+      rim.material = this._mat("rimmat", this.theme.rim, this.theme.rimEmit);
       this._dyn.push(rim);
       const net = BABYLON.MeshBuilder.CreateCylinder(
         "net",
@@ -169,10 +268,10 @@
         },
         this.scene,
       );
-      net.position.set(c.x, C.circle.standHeight - 1.3, c.z);
+      net.position.set(bx, top - 1.3, bz);
       const nm = new BABYLON.StandardMaterial("netmat", this.scene);
-      nm.diffuseColor = hex("#ffffff");
-      nm.emissiveColor = hex("#dddddd");
+      nm.diffuseColor = hex(this.theme.net);
+      nm.emissiveColor = hex(this.theme.netEmit);
       nm.wireframe = true;
       nm.alpha = 0.7;
       nm.backFaceCulling = false;
@@ -298,7 +397,7 @@
       if (b.state === "pocketed") {
         // First frame it becomes pocketed: launch the basket animation.
         if (prev && prev !== "pocketed" && !m._animating)
-          this._startPocketAnim(m, snap);
+          this._startPocketAnim(m, snap, b.basket);
         if (!m._animating) m.isVisible = false;
         return;
       }
@@ -312,17 +411,20 @@
 
   // Animate a pocketed ball arcing up into the nearest basket, then dropping
   // through the net and fading out.
-  FluxScene.prototype._startPocketAnim = function (m, snap) {
-    let best = null,
-      bd = Infinity;
-    for (const c of snap.circles) {
-      const d = Math.hypot(c.x - m.position.x, c.z - m.position.z);
-      if (d < bd) {
-        bd = d;
-        best = c;
+  FluxScene.prototype._startPocketAnim = function (m, snap, basket) {
+    // Prefer the exact basket the engine recorded; else nearest basket.
+    let target = basket;
+    if (!target) {
+      let bd = Infinity;
+      for (const c of snap.circles) {
+        const d = Math.hypot(c.bx - m.position.x, c.bz - m.position.z);
+        if (d < bd) {
+          bd = d;
+          target = { x: c.bx, z: c.bz };
+        }
       }
     }
-    if (!best) {
+    if (!target) {
       m.isVisible = false;
       return;
     }
@@ -333,7 +435,7 @@
       t: 0,
       dur: 0.7,
       from: { x: m.position.x, y: m.position.y, z: m.position.z },
-      to: { x: best.x, z: best.z, top: C.circle.standHeight },
+      to: { x: target.x, z: target.z, top: C.circle.standHeight },
     });
   };
 

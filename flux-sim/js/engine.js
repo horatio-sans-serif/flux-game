@@ -97,7 +97,28 @@
     });
     if (count % 2 === 1)
       circles.push({ id: circles.length, x: 0, z: 0, r: C.circle.radius });
+    // The basket hangs off the pole on an arm pointing toward field center, so
+    // the pole never passes through the net and there is an open side to shoot
+    // from. (bx,bz) is the basket's ground position; (adx,adz) the arm direction.
+    circles.forEach((c) => {
+      let dx = -c.x,
+        dz = -c.z;
+      let L = Math.hypot(dx, dz);
+      if (L < 1e-3) {
+        dx = 0;
+        dz = 1;
+        L = 1;
+      }
+      c.adx = dx / L;
+      c.adz = dz / L;
+      c.bx = c.x + c.adx * C.circle.basketArm;
+      c.bz = c.z + c.adz * C.circle.basketArm;
+    });
     return circles;
+  };
+
+  FluxEngine.prototype.circleById = function (id) {
+    return this.circles.find((c) => c.id === id) || null;
   };
 
   FluxEngine.prototype._makeCell = function (id, side) {
@@ -226,40 +247,65 @@
 
   FluxEngine.prototype._setCarry = function (p, id) {
     p.role = "CARRY";
-    // Pick the best stand: nearest, with a penalty for enemy presence.
+    // Pick the best basket: nearest, penalized by enemies guarding it.
     let best = null,
       bs = Infinity;
     for (const c of this.circles) {
       const enemyNear = this.cells[this.other(id)].players.filter(
-        (e) => e.state !== "sideline" && dist(e.pos, c) < c.r,
+        (e) =>
+          e.state !== "sideline" &&
+          Math.hypot(e.pos.x - c.bx, e.pos.z - c.bz) <= C.match.blockRadius,
       ).length;
-      const s = dist(p.pos, c) + enemyNear * 14;
+      const s = Math.hypot(p.pos.x - c.bx, p.pos.z - c.bz) + enemyNear * 14;
       if (s < bs) {
         bs = s;
         best = c;
       }
     }
-    p.target = { x: best.x, z: best.z };
+    p.targetCircleId = best.id;
+    // Aim at a shooting spot offset from the pole along the arm (off the pole).
+    p.target = {
+      x: best.x + best.adx * C.match.shootStandoff,
+      z: best.z + best.adz * C.match.shootStandoff,
+    };
   };
 
   FluxEngine.prototype._setDefend = function (p, i) {
     p.role = "DEFEND";
-    // Defend a circle: prefer one with a friendly carrier driving, else spread.
+    // Defend a basket: crowd one threatened by an enemy carrier, else spread.
     let target = null;
+    let bd = Infinity;
     for (const b of this.balls) {
-      if (b.state === "carried") {
-        const carrier = this.playerById(b.carrier);
-        if (carrier && carrier.cell === p.cell) {
-          const c = this.circleAt(carrier.pos);
-          if (c) {
-            target = c;
-            break;
-          }
-        }
+      if (b.state !== "carried") continue;
+      const carrier = this.playerById(b.carrier);
+      if (!carrier || carrier.cell === p.cell) continue;
+      const c =
+        (carrier.targetCircleId != null &&
+          this.circleById(carrier.targetCircleId)) ||
+        this._nearestCircleByBasket(carrier.pos);
+      if (!c) continue;
+      const d = dist(p.pos, { x: c.bx, z: c.bz });
+      if (d < bd) {
+        bd = d;
+        target = c;
       }
     }
     if (!target) target = this.circles[i % this.circles.length];
-    p.target = { x: target.x, z: target.z };
+    // Stand at the basket to block shots (the open shooting lane).
+    p.target = { x: target.bx, z: target.bz };
+  };
+
+  FluxEngine.prototype._nearestCircleByBasket = function (pos) {
+    let best = null,
+      bd = Infinity;
+    for (const c of this.circles) {
+      const d = Math.hypot(pos.x - c.bx, pos.z - c.bz);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    return best;
   };
 
   FluxEngine.prototype._setHunt = function (p, enemies, strat) {
@@ -334,6 +380,65 @@
         b.carrier = best.id;
         best.ballId = b.id;
         best.holding = false;
+        best.shotCharge = 0;
+      }
+    }
+  };
+
+  // ---- Player collision: nobody passes through anyone else -------------------
+  // A simple positional separation pass. Active players get pushed out of any
+  // overlap; an active player overlapping a stationary one (sparring/penalty)
+  // is pushed the whole way so it can't stand inside them.
+  FluxEngine.prototype._separate = function () {
+    const minSep = C.move.playerRadius * 2;
+    const all = [];
+    for (const id of ["A", "B"])
+      for (const p of this.cells[id].players)
+        if (p.state !== "sideline") all.push(p);
+    // A few relaxation passes so clusters fully resolve, not just neighbours.
+    for (let iter = 0; iter < 4; iter++) {
+      let moved = false;
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          const a = all[i],
+            b = all[j];
+          const aMov = a.state === "active";
+          const bMov = b.state === "active";
+          if (!aMov && !bMov) continue;
+          let dx = a.pos.x - b.pos.x;
+          let dz = a.pos.z - b.pos.z;
+          let d = Math.hypot(dx, dz);
+          if (d >= minSep) continue;
+          if (d < 1e-4) {
+            dx = ((i * 7 + j) % 2 ? 1 : -1) * 0.01;
+            dz = 0.01;
+            d = Math.hypot(dx, dz);
+          }
+          const overlap = minSep - d;
+          const nx = dx / d,
+            nz = dz / d;
+          const aShare = aMov && bMov ? 0.5 : aMov ? 1 : 0;
+          const bShare = aMov && bMov ? 0.5 : bMov ? 1 : 0;
+          a.pos.x += nx * overlap * aShare;
+          a.pos.z += nz * overlap * aShare;
+          b.pos.x -= nx * overlap * bShare;
+          b.pos.z -= nz * overlap * bShare;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    const hx = C.field.width / 2,
+      hz = C.field.depth / 2;
+    for (const p of all) {
+      p.pos.x = clamp(p.pos.x, -hx, hx);
+      p.pos.z = clamp(p.pos.z, -hz, hz);
+      if (p.ballId != null) {
+        const ball = this.balls[p.ballId];
+        if (ball) {
+          ball.pos.x = p.pos.x;
+          ball.pos.z = p.pos.z;
+        }
       }
     }
   };
@@ -463,7 +568,7 @@
     if (p.ballId == null) return;
     const b = this.balls[p.ballId];
     p.ballId = null;
-    p.driveProgress = 0;
+    p.shotCharge = 0;
     if (!b) return;
     b.state = "loose";
     b.carrier = null;
@@ -586,56 +691,72 @@
     }
   };
 
-  // ---- Pocketing -------------------------------------------------------------
+  // ---- Pocketing: charge a shot from standoff range, then shoot --------------
   FluxEngine.prototype._pocketing = function () {
     for (const id of ["A", "B"]) {
       const cell = this.cells[id];
       const them = this.cells[this.other(id)];
       for (const p of cell.players) {
-        if (p.ballId == null || p.state !== "active") {
+        if (p.ballId == null || p.state !== "active") continue;
+        const c =
+          (p.targetCircleId != null && this.circleById(p.targetCircleId)) ||
+          this._nearestCircleByBasket(p.pos);
+        if (!c) continue;
+        const dB = Math.hypot(p.pos.x - c.bx, p.pos.z - c.bz);
+        if (dB > C.match.shootRange) {
+          p.shotCharge = Math.max(0, (p.shotCharge || 0) - 1);
           continue;
         }
-        const c = this.circleAt(p.pos);
-        const onStand = c && dist(p.pos, c) <= C.circle.pocketRadius;
-        const contested =
-          c &&
-          them.players.some(
-            (e) =>
-              e.state === "active" &&
-              dist(e.pos, c) <= c.r &&
-              dist(e.pos, p.pos) <= C.match.sparRange + 1,
-          );
-        if (onStand && !contested) {
-          // Would this pocket close out the game?
-          const wouldCloseOut = cell.pockets + 1 >= C.match.pocketsToCloseOut;
-          const behind = cell.points < them.points;
-          const strat = root.Flux.STRATEGIES[cell.strategy];
-          if (wouldCloseOut && behind && strat.holdAt2IfBehind) {
-            // Don't hand the opponent the win -- stall and hunt points instead.
-            p.holding = true;
-            p.role = "DEFEND";
-            p.driveProgress = 0;
-            continue;
-          }
-          p.driveProgress += 1;
-          if (p.driveProgress >= C.match.driveStepsToPocket) {
-            this._pocket(p, cell);
-          }
-        } else {
-          p.driveProgress = Math.max(0, p.driveProgress - 1);
+        // Would a successful shot close out the game while behind on points?
+        const wouldCloseOut = cell.pockets + 1 >= C.match.pocketsToCloseOut;
+        const behind = cell.points < them.points;
+        const strat = root.Flux.STRATEGIES[cell.strategy];
+        if (wouldCloseOut && behind && strat.holdAt2IfBehind) {
+          p.holding = true;
+          p.role = "DEFEND";
+          p.shotCharge = 0;
+          continue;
+        }
+        p.shotCharge = (p.shotCharge || 0) + 1;
+        if (p.shotCharge >= C.match.shotChargeSteps) {
+          p.shotCharge = 0;
+          this._takeShot(p, cell, them, c);
         }
       }
     }
   };
 
-  FluxEngine.prototype._pocket = function (p, cell) {
+  FluxEngine.prototype._takeShot = function (p, cell, them, c) {
+    // Opponents crowding the basket lower the odds; a miss is knocked back to
+    // center (matches "knocked-back balls chucked to center").
+    const blockers = them.players.filter(
+      (e) =>
+        e.state === "active" &&
+        Math.hypot(e.pos.x - c.bx, e.pos.z - c.bz) <= C.match.blockRadius,
+    ).length;
+    const prob = clamp(
+      C.match.baseShotChance * p.stats.carry - blockers * C.match.blockPenalty,
+      0.03,
+      0.95,
+    );
+    if (this.rng.chance(prob)) {
+      this._pocket(p, cell, c);
+    } else {
+      this.events.push({ t: this.step, type: "miss", by: p.id, blockers });
+      this._dropBall(p, true); // knocked back to center
+    }
+  };
+
+  FluxEngine.prototype._pocket = function (p, cell, c) {
     const b = this.balls[p.ballId];
     if (b) {
       b.state = "pocketed";
       b.carrier = null;
+      // Remember which basket it went into so the renderer can animate the arc.
+      if (c) b.basket = { x: c.bx, z: c.bz };
     }
     p.ballId = null;
-    p.driveProgress = 0;
+    p.shotCharge = 0;
     cell.pockets += 1;
     this.events.push({ t: this.step, type: "pocket", cell: cell.id, by: p.id });
     this._spawnBall();
@@ -671,6 +792,7 @@
     }
     for (const id of ["A", "B"])
       for (const p of this.cells[id].players) this._move(p);
+    this._separate(); // players can't pass through each other
     this._pickups();
     this._tryStartSpars();
     this._pocketing();
@@ -719,6 +841,7 @@
         x: b.pos.x,
         z: b.pos.z,
         state: b.state,
+        basket: b.basket || null,
       })),
       cells: {
         A: this._cellSnap("A"),
