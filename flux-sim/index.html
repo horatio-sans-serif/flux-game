@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flux — Simulator</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <!-- Babylon.js + GUI from CDN (only network dependency) -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="renderCanvas"></canvas>
+
+      <!-- Live scoreboard -->
+      <div id="scoreboard">
+        <div class="team red">
+          <div class="tname">RED</div>
+          <div class="score" id="scoreA">0</div>
+          <div class="pockets" id="pocketsA"></div>
+          <div class="strat">plan: <span id="stratLiveA">—</span></div>
+        </div>
+        <div class="mid"><div id="clock">step 0</div></div>
+        <div class="team blue">
+          <div class="tname">BLUE</div>
+          <div class="score" id="scoreB">0</div>
+          <div class="pockets" id="pocketsB"></div>
+          <div class="strat">plan: <span id="stratLiveB">—</span></div>
+        </div>
+      </div>
+
+      <!-- Control panel -->
+      <aside id="panel">
+        <h1>Flux <span>Simulator</span></h1>
+
+        <section>
+          <h2>Scenario</h2>
+          <label>Seed <input id="seed" value="flux" /></label>
+          <label
+            >Red plan
+            <select id="stratA"></select>
+          </label>
+          <label
+            >Blue plan
+            <select id="stratB"></select>
+          </label>
+          <div class="row">
+            <button id="newBtn">New match</button>
+            <button id="playBtn" class="primary">Play</button>
+          </div>
+          <label
+            >Speed <span id="speedVal">1×</span>
+            <input
+              id="speed"
+              type="range"
+              min="0.25"
+              max="8"
+              step="0.25"
+              value="1"
+            />
+          </label>
+        </section>
+
+        <section>
+          <h2>Fast batch</h2>
+          <label
+            >Games <input id="batchN" type="number" value="100" min="1"
+          /></label>
+          <button id="runBatch">Run batch (no watching)</button>
+          <div class="bar"><div id="batchBar"></div></div>
+          <div id="batchOut" class="out"></div>
+        </section>
+
+        <section>
+          <h2>Game-theory analysis</h2>
+          <label
+            >Games / matchup
+            <input id="anGames" type="number" value="40" min="5"
+          /></label>
+          <label
+            >Game-state games
+            <input id="anGsGames" type="number" value="300" min="50"
+          /></label>
+          <button id="runAnalysis" class="primary">Run full analysis</button>
+          <div class="bar"><div id="anBar"></div></div>
+          <div id="anStatus" class="out"></div>
+          <button id="downloadReport" disabled>Download report (.md)</button>
+        </section>
+      </aside>
+
+      <!-- Analysis report -->
+      <div id="report">
+        <div id="reportOut">
+          <p class="hint">
+            Run the analysis to generate the optimal-play writeup and rules
+            check.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/rng.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/strategies.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/evaluator.js"></script>
+    <script src="js/scene.js"></script>
+    <script src="js/ui.js"></script>
+  </body>
+</html>

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flux</title>
+    <style>
+      :root {
+        --red: #e0443e;
+        --blue: #3e72e0;
+        --ink: #1c2330;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        background: linear-gradient(160deg, #bfe3ff 0%, #d7f0d9 60%, #fff 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .wrap {
+        max-width: 720px;
+        width: 100%;
+        text-align: center;
+      }
+      h1 {
+        font-size: 64px;
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: -1px;
+      }
+      h1 .x {
+        color: var(--red);
+      }
+      .tag {
+        font-size: 18px;
+        color: #4a5568;
+        margin: 6px 0 28px;
+      }
+      .play {
+        display: inline-block;
+        background: var(--blue);
+        color: #fff;
+        text-decoration: none;
+        font-size: 20px;
+        font-weight: 700;
+        padding: 16px 40px;
+        border-radius: 14px;
+        box-shadow: 0 8px 24px #3e72e055;
+        transition:
+          transform 0.08s,
+          filter 0.08s;
+      }
+      .play:hover {
+        transform: translateY(-2px);
+        filter: brightness(1.06);
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 34px;
+      }
+      .card {
+        background: #ffffffcc;
+        border-radius: 14px;
+        padding: 18px 14px;
+        text-decoration: none;
+        color: var(--ink);
+        box-shadow: 0 4px 16px #0001;
+        transition: transform 0.08s;
+      }
+      .card:hover {
+        transform: translateY(-2px);
+      }
+      .card b {
+        display: block;
+        font-size: 15px;
+      }
+      .card span {
+        font-size: 12px;
+        color: #6b7686;
+      }
+      footer {
+        margin-top: 30px;
+        font-size: 12px;
+        color: #7a8699;
+      }
+      @media (max-width: 560px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 48px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Flu<span class="x">x</span></h1>
+      <p class="tag">
+        The ball race is the clock. The ribbon duel is the score.
+      </p>
+      <a class="play" href="flux-sim/index.html">Launch the simulator →</a>
+      <div class="cards">
+        <a
+          class="card"
+          href="https://github.com/horatio-sans-serif/flux-game/blob/main/QUICKSTART.md"
+          ><b>Quick start</b><span>How to play a pickup game</span></a
+        >
+        <a
+          class="card"
+          href="https://github.com/horatio-sans-serif/flux-game/blob/main/RULEBOOK.md"
+          ><b>Rulebook</b><span>The full rules</span></a
+        >
+        <a
+          class="card"
+          href="https://github.com/horatio-sans-serif/flux-game/blob/main/TRAINING.md"
+          ><b>Training</b><span>The practice & dev system</span></a
+        >
+      </div>
+      <footer>Made for the inventor of Flux.</footer>
+    </div>
+  </body>
+</html>
