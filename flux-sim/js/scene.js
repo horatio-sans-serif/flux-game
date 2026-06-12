@@ -148,18 +148,36 @@
       pole.material = this._mat("polemat", "#cfcfcf", "#444");
       this.shadow.addShadowCaster(pole);
       this._dyn.push(pole);
-      const pocket = BABYLON.MeshBuilder.CreateTorus(
-        "pocket",
+      // Basket: an orange rim with a hanging wireframe net, like a hoop.
+      const rimD = C.circle.pocketRadius * 2.0;
+      const rim = BABYLON.MeshBuilder.CreateTorus(
+        "rim",
+        { diameter: rimD, thickness: 0.5, tessellation: 28 },
+        this.scene,
+      );
+      rim.position.set(c.x, C.circle.standHeight, c.z);
+      rim.material = this._mat("rimmat", "#ff7a1a", "#7a3300");
+      this._dyn.push(rim);
+      const net = BABYLON.MeshBuilder.CreateCylinder(
+        "net",
         {
-          diameter: C.circle.pocketRadius * 1.6,
-          thickness: 0.5,
-          tessellation: 24,
+          height: 2.6,
+          diameterTop: rimD,
+          diameterBottom: rimD * 0.42,
+          tessellation: 12,
+          cap: BABYLON.Mesh.NO_CAP,
         },
         this.scene,
       );
-      pocket.position.set(c.x, C.circle.standHeight, c.z);
-      pocket.material = this._mat("pocketmat", "#ff8c1a", "#7a3f00");
-      this._dyn.push(pocket);
+      net.position.set(c.x, C.circle.standHeight - 1.3, c.z);
+      const nm = new BABYLON.StandardMaterial("netmat", this.scene);
+      nm.diffuseColor = hex("#ffffff");
+      nm.emissiveColor = hex("#dddddd");
+      nm.wireframe = true;
+      nm.alpha = 0.7;
+      nm.backFaceCulling = false;
+      net.material = nm;
+      this._dyn.push(net);
     });
 
     // GUI layer for labels
@@ -185,16 +203,18 @@
         this.shadow.addShadowCaster(body);
 
         const rect = new BABYLON.GUI.Rectangle();
-        rect.width = "78px";
-        rect.height = "26px";
-        rect.cornerRadius = 8;
+        rect.adaptWidthToChildren = true;
+        rect.height = "22px";
         rect.thickness = 0;
-        rect.background = team.base + "cc";
+        rect.background = ""; // no background fill
+        rect.alpha = 0.8; // partially transparent
         const txt = new BABYLON.GUI.TextBlock();
         txt.text = p.name;
-        txt.color = "white";
-        txt.fontSize = 13;
-        txt.fontWeight = "bold";
+        txt.color = team.base; // team-colored text
+        txt.fontSize = 14;
+        txt.fontWeight = "700";
+        txt.outlineWidth = 4; // white outline keeps it legible on the turf
+        txt.outlineColor = "white";
         rect.addControl(txt);
         this.gui.addControl(rect);
         rect.linkWithMesh(body);
@@ -206,6 +226,8 @@
 
     // Balls
     this.balls = {};
+    this._ballPrev = {}; // last seen state per ball, to detect a pocket
+    this._pocketAnims = []; // active "ball into the basket" tweens
     this._ensureBalls(snap);
     this._sync(snap, 1); // snap instantly to initial positions
     return this;
@@ -271,8 +293,13 @@
     snap.balls.forEach((b) => {
       const m = this.balls[b.id];
       if (!m) return;
+      const prev = this._ballPrev[b.id];
+      this._ballPrev[b.id] = b.state;
       if (b.state === "pocketed") {
-        m.isVisible = false;
+        // First frame it becomes pocketed: launch the basket animation.
+        if (prev && prev !== "pocketed" && !m._animating)
+          this._startPocketAnim(m, snap);
+        if (!m._animating) m.isVisible = false;
         return;
       }
       m.isVisible = true;
@@ -280,6 +307,58 @@
       m.position.x += (b.x - m.position.x) * (carried ? 0.4 : 0.25);
       m.position.z += (b.z - m.position.z) * (carried ? 0.4 : 0.25);
       m.position.y = carried ? 3.6 : 0.9;
+    });
+  };
+
+  // Animate a pocketed ball arcing up into the nearest basket, then dropping
+  // through the net and fading out.
+  FluxScene.prototype._startPocketAnim = function (m, snap) {
+    let best = null,
+      bd = Infinity;
+    for (const c of snap.circles) {
+      const d = Math.hypot(c.x - m.position.x, c.z - m.position.z);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    if (!best) {
+      m.isVisible = false;
+      return;
+    }
+    m._animating = true;
+    m.isVisible = true;
+    this._pocketAnims.push({
+      m,
+      t: 0,
+      dur: 0.7,
+      from: { x: m.position.x, y: m.position.y, z: m.position.z },
+      to: { x: best.x, z: best.z, top: C.circle.standHeight },
+    });
+  };
+
+  FluxScene.prototype._advancePocketAnims = function (dt) {
+    if (!this._pocketAnims || !this._pocketAnims.length) return;
+    const lerp = (a, b, t) => a + (b - a) * t;
+    this._pocketAnims = this._pocketAnims.filter((a) => {
+      a.t += dt;
+      const p = Math.min(1, a.t / a.dur);
+      const m = a.m;
+      m.position.x = lerp(a.from.x, a.to.x, p);
+      m.position.z = lerp(a.from.z, a.to.z, p);
+      const rise = lerp(a.from.y, a.to.top, Math.min(1, p * 1.25));
+      const hop = 3.2 * Math.sin(Math.PI * Math.min(1, p)); // arc over the rim
+      const drop = p > 0.75 ? ((p - 0.75) / 0.25) * 2.5 : 0; // fall through net
+      m.position.y = rise + hop - drop;
+      if (m.material)
+        m.material.alpha = p > 0.7 ? Math.max(0, 1 - (p - 0.7) / 0.3) : 1;
+      if (p >= 1) {
+        m.isVisible = false;
+        m._animating = false;
+        if (m.material) m.material.alpha = 1;
+        return false;
+      }
+      return true;
     });
   };
 
@@ -300,6 +379,7 @@
     if (this.simEngine) {
       const snap = this.simEngine.snapshot();
       this._sync(snap);
+      this._advancePocketAnims(dt);
       if (this.onState) this.onState(snap);
     }
     this.scene.render();

@@ -10,6 +10,8 @@
   const yield_ = () => new Promise((r) => setTimeout(r, 0));
 
   let scene, current;
+  let layoutSeed = F.hashSeed("flux"); // board layout, independent of match seed
+  let busy = false; // true while a batch/analysis is running
 
   function strategyOptions(sel, includeAuto) {
     sel.innerHTML = "";
@@ -24,57 +26,151 @@
       seed: $("seed").value || "flux",
       strategyA: sa === "auto" ? null : sa,
       strategyB: sb === "auto" ? null : sb,
+      circleCount: parseInt($("circleCount").value, 10) || 6,
+      layoutSeed,
     };
   }
 
+  // ---- Game state + control gating ------------------------------------------
+  function gameState() {
+    if (!current) return "ready";
+    if (current.result) return "ended";
+    if (scene.playing) return "playing";
+    if (current.step > 0) return "paused";
+    return "ready";
+  }
+
+  function refreshControls() {
+    const s = gameState();
+    const inProgress = s === "playing" || s === "paused";
+    // Scenario + board can't change mid-match.
+    ["seed", "stratA", "stratB", "circleCount"].forEach(
+      (id) => ($(id).disabled = inProgress || busy),
+    );
+    $("shuffleBoard").disabled = inProgress || busy;
+    // Heavy offline runs are blocked while a match is actively playing or busy.
+    $("runBatch").disabled = s === "playing" || busy;
+    $("runAnalysis").disabled = s === "playing" || busy;
+    $("newBtn").disabled = busy;
+    $("playBtn").disabled = busy;
+    setStatus(s);
+  }
+
+  function setStatus(s) {
+    const el = $("status");
+    el.className = "status " + s;
+    if (s === "ready") el.textContent = "Ready";
+    else if (s === "playing") el.textContent = "● Live";
+    else if (s === "paused") el.textContent = "Paused";
+    else {
+      const r = current.result;
+      el.textContent =
+        r.winnerCell === "draw"
+          ? "Draw"
+          : r.winnerCell === "A"
+            ? "Red wins"
+            : "Blue wins";
+    }
+    $("playBtn").textContent =
+      s === "playing" ? "Pause" : s === "ended" ? "Replay" : "Play";
+  }
+
+  // ---- Match lifecycle -------------------------------------------------------
   function newMatch() {
     current = new F.FluxEngine(readScenario());
     scene.build(current);
     scene.pause();
-    $("playBtn").textContent = "Play";
+    hideAnalysis();
+    drawMinimap();
     updateScoreboard(current.snapshot());
+    refreshControls();
+  }
+
+  function hideAnalysis() {
+    $("reportOut").innerHTML =
+      '<p class="hint">Run the analysis to generate the optimal-play writeup and rules check.</p>';
+    $("downloadReport").disabled = true;
+    $("anStatus").textContent = "";
+    setBar("anBar", 0);
+    window._fluxReport = null;
   }
 
   function updateScoreboard(snap) {
     const a = snap.cells.A,
       b = snap.cells.B;
+    const win = F.CONFIG.match.pocketsToCloseOut;
     $("scoreA").textContent = a.points.toFixed(0);
     $("scoreB").textContent = b.points.toFixed(0);
     $("pocketsA").textContent =
-      "● ".repeat(a.pockets) +
-      "○ ".repeat(F.CONFIG.match.pocketsToCloseOut - a.pockets);
+      "● ".repeat(a.pockets) + "○ ".repeat(win - a.pockets);
     $("pocketsB").textContent =
-      "● ".repeat(b.pockets) +
-      "○ ".repeat(F.CONFIG.match.pocketsToCloseOut - b.pockets);
+      "● ".repeat(b.pockets) + "○ ".repeat(win - b.pockets);
     $("stratLiveA").textContent = a.strategy;
     $("stratLiveB").textContent = b.strategy;
-    $("clock").textContent =
-      "step " + snap.step + " · " + snap.time.toFixed(1) + "s";
     if (snap.result) {
       const r = snap.result;
-      const w =
-        r.winnerCell === "draw"
-          ? "Draw"
-          : (r.winnerCell === "A" ? "Red" : "Blue") + " wins";
       $("clock").textContent =
-        `${w} · ${r.reason}${r.pyrrhic ? " (pyrrhic close-out!)" : ""} · ` +
-        `pts ${r.pointsA}-${r.pointsB}`;
-      scene.pause();
-      $("playBtn").textContent = "Play";
+        `${r.reason}${r.pyrrhic ? " · pyrrhic!" : ""} · pts ${r.pointsA}–${r.pointsB}`;
+    } else {
+      $("clock").textContent =
+        "step " + snap.step + " · " + snap.time.toFixed(1) + "s";
     }
+    refreshControls();
+  }
+
+  // ---- Board layout preview --------------------------------------------------
+  function drawMinimap() {
+    const cv = $("minimap");
+    const ctx = cv.getContext("2d");
+    const W = cv.width,
+      H = cv.height;
+    const fw = F.CONFIG.field.width,
+      fd = F.CONFIG.field.depth;
+    const pad = 10;
+    const sx = (W - 2 * pad) / fw,
+      sz = (H - 2 * pad) / fd;
+    const tx = (x) => W / 2 + x * sx;
+    const tz = (z) => H / 2 + z * sz;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#46b14e";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#ffffffaa";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(pad, pad, W - 2 * pad, H - 2 * pad);
+    ctx.beginPath();
+    ctx.moveTo(W / 2, pad);
+    ctx.lineTo(W / 2, H - pad);
+    ctx.stroke();
+    // A throwaway engine just to read its circle positions for this layout.
+    const eng = new F.FluxEngine(readScenario());
+    eng.circles.forEach((c) => {
+      ctx.beginPath();
+      ctx.arc(tx(c.x), tz(c.z), c.r * sx, 0, Math.PI * 2);
+      ctx.strokeStyle = "#f4e04d";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(tx(c.x), tz(c.z), 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#ff7a1a";
+      ctx.fill();
+    });
+  }
+
+  function shuffleBoard() {
+    // Deterministic LCG step -> a fresh but reproducible layout (no Math.random).
+    layoutSeed = (Math.imul(layoutSeed, 1664525) + 1013904223) >>> 0;
+    newMatch();
   }
 
   // ---- Batch -----------------------------------------------------------------
   async function runBatch() {
+    busy = true;
+    refreshControls();
     const n = Math.max(1, parseInt($("batchN").value, 10) || 100);
     const out = $("batchOut");
     out.textContent = "Running…";
     await yield_();
-    // Chunked so the bar moves and the UI stays alive.
     const sc = readScenario();
-    let agg = null;
-    const chunk = 25;
-    let done = 0;
     const acc = {
       aWins: 0,
       bWins: 0,
@@ -85,6 +181,8 @@
       steps: 0,
       closeout: 0,
     };
+    let done = 0;
+    const chunk = 25;
     while (done < n) {
       const m = Math.min(chunk, n - done);
       for (let i = 0; i < m; i++) {
@@ -113,10 +211,14 @@
       `Avg points ${(acc.pA / n).toFixed(1)} – ${(acc.pB / n).toFixed(1)}<br>` +
       `Close-outs ${pct(acc.closeout / n)} · <b>Pyrrhic ${pct(acc.pyr / n)}</b><br>` +
       `Avg length ${(acc.steps / n).toFixed(0)} steps`;
+    busy = false;
+    refreshControls();
   }
 
   // ---- Full analysis ---------------------------------------------------------
   async function runAnalysis() {
+    busy = true;
+    refreshControls();
     const gpc = Math.max(5, parseInt($("anGames").value, 10) || 40);
     const gsGames = Math.max(50, parseInt($("anGsGames").value, 10) || 300);
     const status = $("anStatus");
@@ -149,15 +251,15 @@
     );
 
     const report = F.evaluator.makeReport({ batch, M, eq, brs, dom, gsv });
-    current && (current._lastReport = report);
     window._fluxReport = report;
     $("reportOut").innerHTML = mdToHtml(report);
     setBar("anBar", 1);
     status.textContent = "Done.";
     $("downloadReport").disabled = false;
+    busy = false;
+    refreshControls();
   }
 
-  // Build the payoff matrix a few games at a time so the bar advances.
   async function chunkedMatrix(gpc, seed, onP) {
     const N = F.STRATEGY_NAMES.length;
     const M = Array.from({ length: N }, () => new Array(N).fill(0));
@@ -185,7 +287,6 @@
   }
 
   async function chunkedGsv(games, seed, onP) {
-    // Reuse the evaluator but yield periodically by slicing the game loop.
     const table = {};
     const NAMES = F.STRATEGY_NAMES;
     const rec = (bucket, strat, win) => {
@@ -261,7 +362,6 @@
     URL.revokeObjectURL(a.href);
   }
 
-  // Minimal Markdown -> HTML for the report panel (headings, bold, lists, tables).
   function mdToHtml(md) {
     const lines = md.split("\n");
     let html = "",
@@ -313,25 +413,28 @@
   function init() {
     strategyOptions($("stratA"), true);
     strategyOptions($("stratB"), true);
+    const cc = $("circleCount");
+    [4, 6, 8].forEach((n) => cc.add(new Option(String(n), String(n))));
+    cc.value = "6";
+
     scene = new F.FluxScene($("renderCanvas"));
     scene.onState = updateScoreboard;
+    scene.engine.resize();
     newMatch();
 
     $("newBtn").onclick = newMatch;
     $("playBtn").onclick = () => {
       if (current.result) newMatch();
-      if (scene.playing) {
-        scene.pause();
-        $("playBtn").textContent = "Play";
-      } else {
-        scene.play();
-        $("playBtn").textContent = "Pause";
-      }
+      if (scene.playing) scene.pause();
+      else scene.play();
+      refreshControls();
     };
     $("speed").oninput = (e) => {
       scene.setSpeed(parseFloat(e.target.value));
       $("speedVal").textContent = e.target.value + "×";
     };
+    $("circleCount").onchange = newMatch;
+    $("shuffleBoard").onclick = shuffleBoard;
     $("runBatch").onclick = runBatch;
     $("runAnalysis").onclick = runAnalysis;
     $("downloadReport").onclick = () =>

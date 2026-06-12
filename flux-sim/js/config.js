@@ -38,9 +38,11 @@
       jointPoints: 2, // points for a joint ribbon pull
       baseTagChance: 0.55, // base chance to land a tag in an exchange
       // KEY BALANCE LEVER: share of a landed tag that hits a vital ribbon.
-      // At ~0.28+ the point-stripping "Aggro" hunt strictly dominates and the
-      // ball race becomes irrelevant. At ~0.18 the equilibrium is a real mix of
-      // Rush (race the clock) and Aggro (strip points) -- the intended tension.
+      // Higher values make spar-hunting ("Aggro") swing the score harder, so the
+      // ribbon game outweighs the ball race. Around 0.28+ Aggro strictly
+      // dominates. Even at 0.18 Aggro is the strongest whole-game commitment;
+      // push toward ~0.13 to pull Rush (racing the clock) into the equilibrium.
+      // The per-game-state guidance stays varied across this whole range.
       baseVitalShare: 0.18,
       surrenderThreshold: -6, // if a player trails this much, they may close-in
       surrenderChance: 0.4,

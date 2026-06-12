@@ -11,26 +11,7 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="renderCanvas"></canvas>
-
-      <!-- Live scoreboard -->
-      <div id="scoreboard">
-        <div class="team red">
-          <div class="tname">RED</div>
-          <div class="score" id="scoreA">0</div>
-          <div class="pockets" id="pocketsA"></div>
-          <div class="strat">plan: <span id="stratLiveA">—</span></div>
-        </div>
-        <div class="mid"><div id="clock">step 0</div></div>
-        <div class="team blue">
-          <div class="tname">BLUE</div>
-          <div class="score" id="scoreB">0</div>
-          <div class="pockets" id="pocketsB"></div>
-          <div class="strat">plan: <span id="stratLiveB">—</span></div>
-        </div>
-      </div>
-
-      <!-- Control panel -->
+      <!-- Sidebar -->
       <aside id="panel">
         <h1>Flux <span>Simulator</span></h1>
 
@@ -39,12 +20,12 @@
           <label>Seed <input id="seed" value="flux" /></label>
           <label
             >Red plan
-            <select id="stratA"></select>
-          </label>
+            <select id="stratA"></select
+          ></label>
           <label
             >Blue plan
-            <select id="stratB"></select>
-          </label>
+            <select id="stratB"></select
+          ></label>
           <div class="row">
             <button id="newBtn">New match</button>
             <button id="playBtn" class="primary">Play</button>
@@ -60,6 +41,16 @@
               value="1"
             />
           </label>
+        </section>
+
+        <section>
+          <h2>Board layout</h2>
+          <label
+            >Circles
+            <select id="circleCount"></select
+          ></label>
+          <button id="shuffleBoard">Shuffle layout</button>
+          <canvas id="minimap" width="248" height="166"></canvas>
         </section>
 
         <section>
@@ -87,17 +78,67 @@
           <div id="anStatus" class="out"></div>
           <button id="downloadReport" disabled>Download report (.md)</button>
         </section>
+
+        <details id="cheats">
+          <summary>Rules cheatsheet</summary>
+          <ul>
+            <li>
+              Carry a ball into a basket to pocket it — only safe inside a
+              circle.
+            </li>
+            <li>
+              First cell to <b>3 pockets</b> ends the game; most
+              <b>ribbon points</b> wins.
+            </li>
+            <li>
+              Joint pull = small points. <b>Vital pull ends the spar</b> and
+              strips the loser's points.
+            </li>
+            <li>
+              Behind on points? Don't pocket your 3rd — stall and hunt points.
+            </li>
+            <li><b>●</b> before a name = that player is carrying a ball.</li>
+          </ul>
+          <div class="legend">
+            <span><i class="sw red"></i>Red</span>
+            <span><i class="sw blue"></i>Blue</span>
+            <span><b>●</b> carrying</span>
+          </div>
+        </details>
       </aside>
 
-      <!-- Analysis report -->
-      <div id="report">
-        <div id="reportOut">
-          <p class="hint">
-            Run the analysis to generate the optimal-play writeup and rules
-            check.
-          </p>
+      <!-- Viewport -->
+      <main id="viewport">
+        <canvas id="renderCanvas"></canvas>
+
+        <div id="scoreboard">
+          <div class="team red">
+            <div class="tname">RED</div>
+            <div class="score" id="scoreA">0</div>
+            <div class="pockets" id="pocketsA"></div>
+            <div class="strat">plan: <span id="stratLiveA">—</span></div>
+          </div>
+          <div class="mid">
+            <div id="status" class="status ready">Ready</div>
+            <div id="clock">step 0</div>
+          </div>
+          <div class="team blue">
+            <div class="tname">BLUE</div>
+            <div class="score" id="scoreB">0</div>
+            <div class="pockets" id="pocketsB"></div>
+            <div class="strat">plan: <span id="stratLiveB">—</span></div>
+          </div>
         </div>
-      </div>
+
+        <div id="report">
+          <div id="reportOut">
+            <p class="hint">
+              Run the analysis to generate the optimal-play writeup and rules
+              check.
+            </p>
+          </div>
+        </div>
+      </main>
     </div>
 
     <script src="js/rng.js"></script>

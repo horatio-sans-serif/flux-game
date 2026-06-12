@@ -73,12 +73,18 @@ of each; these are the spots worth a second look:
 
 ## Findings (default tuning)
 
-- **The sparring concept works — if vital pulls are rare.** `baseVitalShare` in
-  `config.js` is the key balance lever. Around 0.28+, the point-stripping hunt
+- **The sparring concept works, but spar-hunting is strong.** `baseVitalShare`
+  in `config.js` is the key balance lever. Around 0.28+, the point-stripping hunt
   ("Aggro") strictly dominates and the ball race becomes irrelevant — the
-  analyzer flags this as a degenerate strategy space. At **0.18** (the shipped
-  default) the equilibrium is a genuine mix of **Rush** (race the clock) and
-  **Aggro** (strip points): the intended two-games-at-once tension.
+  analyzer flags this. Even at the shipped **0.18**, Aggro is the strongest
+  _whole-game commitment_, so the analyzer reports a "thin whole-game strategy
+  space." Push toward ~0.13 to pull **Rush** (racing the clock) into a real mixed
+  equilibrium. Importantly, the **per-game-state** guidance stays varied across
+  this whole range — what to do changes with the situation (Contain when ahead
+  and even on balls, Rush when even and ball-leading, etc.) even when one plan
+  wins on average. The takeaway: her two-games-at-once idea is sound; the ribbon
+  game just needs vital pulls kept relatively rare so it doesn't swamp the ball
+  race.
 - **The "balls are the clock" rule creates a stalling incentive.** Because ending
   the game while behind loses, a trailing team wants to hold at two pockets. The
   engine models this; if you raise vital frequency you also start to see

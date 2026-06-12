@@ -283,29 +283,48 @@
     L.push("");
 
     L.push("## 4. Game-theory equilibrium\n");
+    // Identify the dominant entry of the equilibrium mix.
+    let topI = 0;
+    eq.dist.forEach((p, i) => {
+      if (p > eq.dist[topI]) topI = i;
+    });
+    const concentrated = eq.dist[topI] >= 0.85;
     if (dom) {
       L.push(
-        `A pure strategy **dominates**: always play **${dom}**. This is a red`,
+        `A pure strategy **strictly dominates**: always play **${dom}**. This is a`,
       );
       L.push(
-        `flag for the rules -- one technique beating all others means the`,
+        `red flag -- one technique beating every other in every matchup means the`,
       );
       L.push(`strategic space is shallow and should be rebalanced.\n`);
-    } else {
+    } else if (concentrated) {
       L.push(
-        "No single strategy dominates. The equilibrium is a **mix** -- play",
+        `No strategy *strictly* dominates, but the equilibrium concentrates on a`,
       );
       L.push(
-        "each strategy with the following frequency to be unexploitable:\n",
+        `single technique: **${NAMES[topI]}** (${fmtPct(eq.dist[topI])} of the mix).`,
+      );
+      L.push(
+        `As a whole-game commitment, **${NAMES[topI]}** is the strongest plan here.`,
+      );
+      L.push(
+        `The richer strategic variety lives in the per-game-state guide below --`,
+      );
+      L.push(
+        `what to do *changes* with the situation even if one plan wins on average.\n`,
+      );
+    } else {
+      L.push(
+        "No single strategy dominates. The equilibrium is a genuine **mix** --",
+      );
+      L.push(
+        "play each strategy with the following frequency to be unexploitable:\n",
       );
       L.push("| Strategy | Play frequency |\n|---|---|");
       eq.dist.forEach((p, i) => {
-        if (p > 0.001) L.push(`| ${NAMES[i]} | ${fmtPct(p)} |`);
+        if (p > 0.01) L.push(`| ${NAMES[i]} | ${fmtPct(p)} |`);
       });
-      L.push(
-        `\nGuaranteed win rate of this mix vs. any opponent: **${fmtPct(eq.value)}**`,
-      );
-      L.push("(≈ 50% confirms a balanced, fair design).\n");
+      L.push("");
     }
 
     L.push("## 5. Best technique per game state\n");
@@ -353,7 +372,15 @@
       );
     if (dom)
       signals.push(
-        `**Degenerate strategy space.** "${dom}" dominates; rebalance.`,
+        `**Degenerate strategy space.** "${dom}" strictly dominates; rebalance.`,
+      );
+    else if (concentrated)
+      signals.push(
+        `**Thin whole-game strategy space.** "${NAMES[topI]}" is the equilibrium ` +
+          `(${fmtPct(eq.dist[topI])} of the mix) -- committing to it wins on average. ` +
+          `Lower \`spar.baseVitalShare\` to make racing the ball-clock (Rush) ` +
+          `competitive again, or buff the weaker plans. Note the per-game-state guide ` +
+          `still rewards switching tactics by situation.`,
       );
     if (Math.abs(batch.aWins - batch.bWins) / batch.games > 0.1)
       signals.push(

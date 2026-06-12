@@ -39,6 +39,15 @@
     // null strategy => auto-selected from game state each decision tick.
     this.forced = { A: opts.strategyA || null, B: opts.strategyB || null };
     this.opts = opts;
+    // Board layout is independent of the match RNG so a chosen layout stays
+    // fixed while seeds/strategies vary (and can be previewed before play).
+    this.circleCount = opts.circleCount || C.circle.count;
+    this.layoutSeed =
+      opts.layoutSeed != null
+        ? opts.layoutSeed
+        : opts.seed != null
+          ? opts.seed
+          : 12345;
     this.events = []; // light log for the renderer (spars, pockets, KOs)
     this._init();
   }
@@ -61,24 +70,32 @@
   // x = 0, so neither cell gets a geometric advantage (important for fair
   // strategy comparison in the evaluator).
   FluxEngine.prototype._makeCircles = function () {
-    const rng = this.rng;
     const { width, depth, margin } = C.field;
-    const half = Math.floor(C.circle.count / 2);
-    const left = [];
-    let guard = 0;
-    while (left.length < half && guard++ < 2000) {
-      const x = rng.range(-width / 2 + margin, -margin);
-      const z = rng.range(-depth / 2 + margin, depth / 2 - margin);
-      const cand = { x, z };
-      const ok = left.every((c) => dist(c, cand) >= C.circle.minDist);
-      if (ok) left.push(cand);
+    const count = this.circleCount;
+    const half = Math.floor(count / 2);
+    // Try to honor the minimum distance; relax it if the count won't fit.
+    let left = [];
+    let minDist = C.circle.minDist;
+    for (let attempt = 0; attempt < 6 && left.length < half; attempt++) {
+      left = [];
+      const rng = root.Flux.makeRng(
+        (this.layoutSeed >>> 0) + attempt * 1013 + count * 7,
+      );
+      let guard = 0;
+      while (left.length < half && guard++ < 4000) {
+        const x = rng.range(-width / 2 + margin, -margin);
+        const z = rng.range(-depth / 2 + margin, depth / 2 - margin);
+        const cand = { x, z };
+        if (left.every((c) => dist(c, cand) >= minDist)) left.push(cand);
+      }
+      minDist *= 0.8; // ease the constraint for the next attempt if needed
     }
     const circles = [];
     left.forEach((c, i) => {
       circles.push({ id: i, x: c.x, z: c.z, r: C.circle.radius });
       circles.push({ id: i + half, x: -c.x, z: c.z, r: C.circle.radius });
     });
-    if (C.circle.count % 2 === 1)
+    if (count % 2 === 1)
       circles.push({ id: circles.length, x: 0, z: 0, r: C.circle.radius });
     return circles;
   };
